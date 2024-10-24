@@ -24,6 +24,7 @@ DISKSHOT works in any GNU/Linux System that fullfils these dependencies
 - sudo
 - cpio
 - zstd
+### Install
 Clone the Repository
 
 ```bash
