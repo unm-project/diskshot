@@ -1,0 +1,128 @@
+#!/bin/bash
+#######################
+##  DISKSHOT Utility ##
+#######################
+
+# Check if dialog is installed
+if ! command -v dialog &> /dev/null; then
+    echo "Error: dialog is not installed. Please install it to use this script."
+    exit 1
+fi
+
+# Backup directory (can be modified or passed as an argument)
+BACKUP_DIR="/.dss"
+sudo mkdir -p "$BACKUP_DIR"
+
+# ANSI color codes
+BOLD='\e[1m'
+GREEN='\e[32m'
+RED='\e[31m'
+RESET='\e[0m'
+
+info() {
+    echo -e "${BOLD}${GREEN}=>${RESET} $1"
+}
+error() {
+    echo -e "${BOLD}${RED}=>${RESET} $1"
+}
+snap() {
+    if [[ -z "$1" || -z "$2" ]]; then
+        info "Usage: snap <source_directory> <backup_name>"
+        return 1
+    fi
+
+    if [[ ! -d "$1" ]]; then
+        error "Error: Source directory '$1' does not exist."
+        return 1
+    fi
+
+    timestamp=$(date +"%H%M.%d%m%Y")
+    backup_file="$BACKUP_DIR/$2-$timestamp.cpio.zst"
+
+    # Perform the snapshot
+    find "$1" -depth -print0 | cpio -ocv0 | zstd -o "$backup_file"
+
+    if [[ $? -eq 0 ]]; then
+        info "Snapshot created: $backup_file"
+    else
+        error "Error creating snapshot."
+    fi
+}
+rootsnap() {
+    snap "/" "$1"
+}
+rootsnap_fancy() {
+    if dialog --yesno "Are you sure you want to Backup the Root Directory? This may take a few gigabytes." 15 50; then
+        backup_name=$(dialog --inputbox "Enter a name for your Backup" 15 50)
+        rootsnap "$backup_name" 
+    else
+        info "Operation Aborted"
+    fi
+}
+homesnap() {
+    snap "$HOME" "$1"
+}
+homesnap_fancy() {
+    if dialog --yesno "Are you sure you want to Backup the Home Directory? This may take a few gigabytes." 15 50; then
+        backup_name=$(dialog --inputbox "Enter a name for your Backup:" 15 50)
+        homesnap "$backup_name"
+    else
+        info "Operation Aborted"
+    fi
+}
+
+fancy_menu() {
+    dialog --clear --title "DISKSHOT" \
+    --menu "Choose an option:" 15 50 4 \
+    1 "Backup the Root Filesystem" \
+    2 "Backup the Home Directory" \
+    3 "Backup a Custom Directory" \
+    4 "Exit" 2>temp.txt
+
+    # Read the selected option
+    choice=$(<temp.txt)
+
+    case $choice in
+        1) rootsnap_fancy ;;
+        2) homesnap_fancy ;;
+        3) 
+            custom_dir=$(dialog --inputbox "Enter the desired directory" 15 50)
+            backup_name=$(dialog --inputbox "Enter a name for your Backup" 15 50)
+            snap "$custom_dir" "$backup_name" ;;
+        4) exit 0 ;;
+        *) error "Invalid option" ;;
+    esac
+
+    # Cleanup
+    rm -f temp.txt
+}
+
+# Help function
+help() {
+    echo "Unm Diskshot"
+    echo "Take Snapshots of the system"
+    echo "Version: 0.9"
+    echo "Usage: dss <snap|help> <backup_type> <name>"
+    echo "Backup options:"
+    echo "  root       - Backup the root filesystem"
+    echo "  home       - Backup the home directory"
+    echo "  <custom>   - Backup a specified directory"
+    echo "DISKSHOT is Part of the Unm Suite of Tools"
+    echo "DISKSHOT is Licensed under GNU GPLv3"
+}
+
+if [ "$1" = "snap" ]; then
+    if [ "$2" = "root" ]; then
+        rootsnap "$3"
+    elif [ "$2" = "home" ]; then
+        homesnap "$3"
+    else
+        snap "$3" "$4"
+    fi
+elif [ "$1" = "help" ]; then
+    help
+elif [ "$1" = "menu" ]; then
+    fancy_menu
+else
+    echo "Usage: dss <snap|help|menu> <type> <name>"
+fi
