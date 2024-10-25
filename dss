@@ -143,7 +143,7 @@ help() {
     echo "  home                      - Backup the home directory"
     echo "  <custom>                 - Backup a specified directory"
     echo "DISKSHOT is part of the UNM Suite of Tools."
-    echo "Licensed under MIT License."
+    echo "Licensed under USLv1"
 }
 
 if [ "$1" = "snap" ]; then
