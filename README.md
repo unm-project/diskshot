@@ -34,3 +34,4 @@ Recommended: Use the install script
 ```bash
     ./install
 ```
+This Copies the script to /usr/local/bin
