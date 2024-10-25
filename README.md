@@ -25,13 +25,10 @@ DISKSHOT works in any GNU/Linux System that fullfils these dependencies
 - cpio
 - zstd
 ### Install
-Clone the Repository
-
+Run these commands
 ```bash
     git clone https://github.com/juanvel4000/diskshot.git
-```
-Recommended: Use the install script
-```bash
+    cd diskshot
     ./install
 ```
 This Copies the script to /usr/local/bin
