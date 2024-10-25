@@ -31,4 +31,4 @@ Run these commands
     cd diskshot
     ./install
 ```
-This Copies the script to /usr/local/bin
+This Copies the script to the /usr/local/bin folder
