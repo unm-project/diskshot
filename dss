@@ -9,9 +9,9 @@ if ! command -v dialog &> /dev/null; then
     exit 1
 fi
 
-# Backup directory (can be modified or passed as an argument)
-BACKUP_DIR="/.dss"
-sudo mkdir -p "$BACKUP_DIR"
+BACKUP_DIR="/var/dss"
+sudo mkdir -p "$BACKUP_DIR" || { error "Failed to create backup directory"; exit 1; }
+
 
 # ANSI color codes
 BOLD='\e[1m'
@@ -36,16 +36,22 @@ snap() {
         return 1
     fi
 
+    # Check disk space before backup
+    available_space=$(df "$BACKUP_DIR" | tail -1 | awk '{print $4}')
+    if (( available_space < 1024000 )); then  # Check for ~1GB of space
+        error "Not enough disk space available for the backup."
+        return 1
+    fi
+
     timestamp=$(date +"%H%M.%d%m%Y")
     backup_file="$BACKUP_DIR/$2-$timestamp.cpio.zst"
 
     # Perform the snapshot
-    find "$1" -depth -print0 | cpio -ocv0 | zstd -o "$backup_file"
-
-    if [[ $? -eq 0 ]]; then
+    if find "$1" -depth -print0 | cpio -ocv0 | zstd -o "$backup_file"; then
         info "Snapshot created: $backup_file"
     else
         error "Error creating snapshot."
+        return 1
     fi
 }
 rootsnap() {
@@ -97,18 +103,47 @@ fancy_menu() {
     rm -f temp.txt
 }
 
-# Help function
+restore() {
+    foldertr="$1"
+    backup_file="$2"
+
+    if [[ ! -f "$backup_file" ]]; then
+        error "Backup file '$backup_file' does not exist."
+        return 1
+    fi
+
+    info "Extracting the Backup"
+    if ! sudo zstd -d "$backup_file" -o /var/dss/extract.cpio; then
+        error "Error decompressing the backup file."
+        return 1
+    fi
+
+    # Extract to temporary directory before moving
+    temp_dir=$(mktemp -d)
+    if ! sudo cpio -id -D "$temp_dir" < /var/dss/extract.cpio; then
+        error "Error extracting the backup."
+        return 1
+    fi
+
+    # Move to target directory
+    sudo mv "$temp_dir"/* "$foldertr/"
+    info "Backup restored to $foldertr"
+    sudo rm -rf /var/dss/extract.cpio "$temp_dir"
+}
 help() {
-    echo "Unm Diskshot"
-    echo "Take Snapshots of the system"
+    echo "DISKSHOT Utility"
+    echo "Take snapshots of the system."
     echo "Version: 0.9"
-    echo "Usage: dss <snap|help> <backup_type> <name>"
-    echo "Backup options:"
-    echo "  root       - Backup the root filesystem"
-    echo "  home       - Backup the home directory"
-    echo "  <custom>   - Backup a specified directory"
-    echo "DISKSHOT is Part of the Unm Suite of Tools"
-    echo "DISKSHOT is Licensed under GNU GPLv3"
+    echo "Usage: dss <command> <args>"
+    echo "Commands:"
+    echo "  snap <type> <name>       - Create a backup"
+    echo "  restore <file> <folder>  - Restore a backup file"
+    echo "Types for snap:"
+    echo "  root                      - Backup the root filesystem"
+    echo "  home                      - Backup the home directory"
+    echo "  <custom>                 - Backup a specified directory"
+    echo "DISKSHOT is part of the UNM Suite of Tools."
+    echo "Licensed under MIT License."
 }
 
 if [ "$1" = "snap" ]; then
@@ -123,6 +158,9 @@ elif [ "$1" = "help" ]; then
     help
 elif [ "$1" = "menu" ]; then
     fancy_menu
+elif [ "$1" = "restore" ]; then
+    restore "$1" "$2"
+
 else
-    echo "Usage: dss <snap|help|menu> <type> <name>"
+    error "Usage: dss <snap|help|menu> <type> <name>"
 fi
