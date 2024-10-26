@@ -3,12 +3,6 @@
 ##  DISKSHOT Utility ##
 #######################
 
-# Check if dialog is installed
-if ! command -v dialog &> /dev/null; then
-    echo "Error: dialog is not installed. Please install it to use this script."
-    exit 1
-fi
-
 BACKUP_DIR="/var/dss"
 sudo mkdir -p "$BACKUP_DIR" || { echo "Error: Failed to create backup directory"; exit 1; }
 
@@ -24,6 +18,13 @@ info() {
 error() {
     echo -e "${BOLD}${RED}=>${RESET} $1"
 }
+if [ "$UID" = "0" ]; then
+    info "Welcome to DISKSHOT"
+else
+    error "Please run as root"
+    exit 1
+fi
+
 validate_directory() {
     if [[ ! -d "$1" ]]; then
         error "Error: Source directory '$1' does not exist."
@@ -49,7 +50,7 @@ snap() {
     check_disk_space || return 1
 
     local timestamp=$(date +"%H%M.%d%m%Y")
-    local backup_file="$BACKUP_DIR/$2-$timestamp.cpio.zst"
+    local backup_file="$BACKUP_DIR/$2-$timestamp-dss.cpio.zst"
 
     if find "$1" -depth -print0 | cpio -ocv0 | zstd -o "$backup_file"; then
         info "Snapshot created: $backup_file"
@@ -62,62 +63,31 @@ snap() {
 rootsnap() {
     snap "/" "$1"
 }
-
-rootsnap_fancy() {
-    if dialog --yesno "Are you sure you want to Backup the Root Directory? This may take a few gigabytes." 15 50; then
-        backup_name=$(dialog --inputbox "Enter a name for your Backup" 15 50)
-        rootsnap "$backup_name"
-    else
-        info "Operation Aborted"
-    fi
-}
-
 homesnap() {
     snap "$HOME" "$1"
 }
 
-homesnap_fancy() {
-    if dialog --yesno "Are you sure you want to Backup the Home Directory? This may take a few gigabytes." 15 50; then
-        backup_name=$(dialog --inputbox "Enter a name for your Backup:" 15 50)
-        homesnap "$backup_name"
-    else
-        info "Operation Aborted"
-    fi
-}
-
-fancy_menu() {
-    dialog --clear --title "DISKSHOT" \
-    --menu "Choose an option:" 15 50 4 \
-    1 "Backup the Root Filesystem" \
-    2 "Backup the Home Directory" \
-    3 "Backup a Custom Directory" \
-    4 "Exit" 2>temp.txt
-
-    local choice=$(<temp.txt)
-
-    case $choice in
-        1) rootsnap_fancy ;;
-        2) homesnap_fancy ;;
-        3) 
-            custom_dir=$(dialog --inputbox "Enter the desired directory" 15 50)
-            backup_name=$(dialog --inputbox "Enter a name for your Backup" 15 50)
-            snap "$custom_dir" "$backup_name" ;;
-        4) exit 0 ;;
-        *) error "Invalid option" ;;
-    esac
-
-    # Cleanup
-    rm -f temp.txt
-}
-
 restore() {
-    local backup_file="$1"
-    local foldertr="$2"
-
-    if [[ ! -f "$backup_file" ]]; then
-        error "Backup file '$backup_file' does not exist."
+    local backup_files=("$BACKUP_DIR/$1-dss.cpio.zst")
+    
+    # Check if any backup files match the pattern
+    if compgen -G "${backup_files[0]}" > /dev/null; then
+        if [[ ${#backup_files[@]} -gt 1 ]]; then
+            echo "Multiple backup files found:"
+            for file in "${backup_files[@]}"; do
+                echo "  - $(basename "$file")"
+            done
+            read -p "Enter the exact backup file name to restore: " selected_backup
+            backup_file="$BACKUP_DIR/$selected_backup-dss.cpio.zst"
+        else
+            backup_file="${backup_files[0]}"
+        fi
+    else
+        error "No backup files matching '$1' found."
         return 1
     fi
+
+    local foldertr="$2"
 
     info "Extracting the Backup"
     if ! sudo zstd -d "$backup_file" -o "$BACKUP_DIR/extract.cpio"; then
@@ -164,10 +134,8 @@ if [[ "$1" == "snap" ]]; then
     esac
 elif [[ "$1" == "help" ]]; then
     help
-elif [[ "$1" == "menu" ]]; then
-    fancy_menu
 elif [[ "$1" == "restore" ]]; then
     restore "$2" "$3"
 else
-    error "Usage: dss <snap|help|menu|restore> <type> <name>"
+    error "Usage: dss <snap|help|restore> <type> <name>"
 fi
